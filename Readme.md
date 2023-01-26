@@ -5,3 +5,9 @@ Objective of this repo: To save my Code Composer Projects, mainly working with t
 ### List of Projects per folder:
 
 * Teste2023 - Basic empty project with debug and linker already done. 
+
+### Reference Links
+
+* [Main Website of Eval. Board](https://www.ti.com/tool/LAUNCHXL-F28069M)
+
+* [Quick Start Guide](https://www.ti.com/lit/ml/sprui02/sprui02.pdf?ts=1674741617455&ref_url=https%253A%252F%252Fwww.ti.com%252Ftool%252FLAUNCHXL-F28069M)
