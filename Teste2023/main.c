@@ -1,8 +1,12 @@
 #include "DSP28x_Project.h"
 
+
+
+
 void main(void)
 {
-    //disable protection
+
+
     EALLOW;
 
     // Initialize GPIOs for the LEDs and turn them off

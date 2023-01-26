@@ -5,6 +5,7 @@ Objective of this repo: To save my Code Composer Projects, mainly working with t
 ### List of Projects per folder:
 
 * Teste2023 - Basic empty project with debug and linker already done. 
+* ADC_Application - Attempto to config the ADC to receive a bit stream of manchester code
 
 ### Reference Links
 
