@@ -114,8 +114,6 @@ void echo_mode_loop(void);
 //
 // Globals
 //
-Uint16 LoopCount;
-Uint16 ErrorCount;
 
 //
 // Main
@@ -123,7 +121,7 @@ Uint16 ErrorCount;
 void main(void)
 {
     Uint16 ReceivedChar;
-    char *msg;
+
 
     //
     // Step 1. Initialize System Control:
@@ -184,23 +182,19 @@ void main(void)
     //
     // Step 5. User specific code
     //
-    LoopCount = 0;
-    ErrorCount = 0;
 
     scia_fifo_init();      // Initialize the SCI FIFO
     sciInit();  // Initalize SCI for echoback
 
-
-
-
-
+    //infinite loop
     for(;;)
     {
 
+        //enables ECHO MODE
         #ifdef CONSOLE_ECHO_MODE
-
+            void echo_mode_loop(void);
         #endif
-        LoopCount++;
+
     }
 }
 
@@ -300,13 +294,15 @@ void write_console_init_msg(void)
     msg = "\r\nYou will enter a character, and the DSP will echo it back! \n\0";
     scia_msg(msg);
     #endif
-    free(msg);
+
 }
 
 #ifdef CONSOLE_ECHO_MODE
 void echo_mode_loop(void)
 {
+    Uint16 ReceivedChar;
     char *msg;
+
     msg = "\r\nEnter a character: \0";
     scia_msg(msg);
 
@@ -331,7 +327,7 @@ void echo_mode_loop(void)
     msg = "  You sent: \0";
     scia_msg(msg);
     scia_xmit(ReceivedChar);
-    free(msg);
+
 }
 #endif
 
