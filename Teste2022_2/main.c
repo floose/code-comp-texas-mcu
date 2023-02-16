@@ -96,6 +96,7 @@
 //enables echo mode (example of initial application)
 #define CONSOLE_ECHO_MODE
 
+
 //#### DEFINE ADC CODE
 //enables the codes for the ADC
 #define ADC_CODE
@@ -132,8 +133,8 @@ void write_console_init_msg();
 //
 // Globals
 //
-Uint16 sample_data[MAX_SAMPLES];
-Uint16 sample_counter=1;
+Uint16 detected_symbol[2] = {0,0};
+Uint16 symbol_counter = 0;
 //
 // Main
 //
@@ -396,24 +397,34 @@ void echo_mode_loop()
         AdcRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //Clear ADCINT1
         ADC_Result = AdcResult.ADCRESULT0;
 
-        if(sample_counter == MAX_SAMPLES-1)
+        //if sample_counters overflows, starts new symbol detection and decides the bit
+        if(sample_counter == MAX_SAMPLES)
             {
-                sample_counter = 0;
+                symbol_counter = 0;
+                if( detected_symbol[0] > detected_symbol[1])
+                {
+                   //this is bit one\
+                   //do something with the code
+                }
+                else
+                {
+                    //this is bit zero
+                    //do something with the code
+                }
+
             }
 
         // Convert the ADC result to voltage
         if(ADC_Result > ADC_THRESHOLD_VALUE)
         {
 
-            sample_data[i] = 1;
+            detected_symbol[symbol_counter] = 1;
             sample_counter = sample_counter+1;
-            i++;
         }
         else
         {
-            sample_data[i] = 1;
+            detected_symbol[symbol_counter]= 0;
             sample_counter = sample_counter+1;
-            i++;
         }
 
 
