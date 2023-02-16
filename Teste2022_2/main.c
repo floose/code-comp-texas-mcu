@@ -414,17 +414,17 @@ void echo_mode_loop()
 
             }
 
-        // Convert the ADC result to voltage
+        // Convert the ADC result to voltage and formats the detected symbol
         if(ADC_Result > ADC_THRESHOLD_VALUE)
         {
 
             detected_symbol[symbol_counter] = 1;
-            sample_counter = sample_counter+1;
+            symbol_counter = symbol_counter+1;
         }
         else
         {
             detected_symbol[symbol_counter]= 0;
-            sample_counter = sample_counter+1;
+            symbol_counter = symbol_counter+1;
         }
 
 
