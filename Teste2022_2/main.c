@@ -96,31 +96,49 @@
 //enables echo mode (example of initial application)
 #define CONSOLE_ECHO_MODE
 
+//#### DEFINE ADC CODE
+//enables the codes for the ADC
+#define ADC_CODE
+
+//defining ADC CODE defines
+#ifdef ADC_CODE
+    #define ADC_RESOLUTION 4096 // 12-bit ADC resolution
+    #define ADC_THRESHOLD_VALUE 620 //aprox 500 mV threshold
+    //the next defines configure the sampling rate of the timer and adc
+    #define CPU_TIMER_MHZ 80 //clock of timer
+    #define TIMER_PERIOD_US 0.5 //symbol rate period
+    #define MAX_ADC_SAMPLES 2 //defines the maximum samples per symbol
+#endif
 //
 // Included Files
 //
 #include "DSP28x_Project.h"     // Device Headerfile and Examples Include File
-
+#include <math.h>
 //
 // Function Prototypes
 //
-void sciInit(void);
-void scia_fifo_init(void);
+void sciInit();
+void scia_fifo_init();
 void scia_xmit(int a);
 void scia_msg(char *msg);
-void write_console_init_msg(void);
-void echo_mode_loop(void);
-
+void write_console_init_msg();
+#ifdef CONSOLE_ECHO_MODE
+    void echo_mode_loop();
+#endif
+#ifdef ADC_CODE
+    void adcInit();
+    __interrupt void cpu_timer0_isr(void);
+#endif
 //
 // Globals
 //
-
+Uint16 sample_data[MAX_SAMPLES];
+Uint16 sample_counter=1;
 //
 // Main
 //
 void main(void)
 {
-    Uint16 ReceivedChar;
 
 
     //
@@ -172,20 +190,23 @@ void main(void)
     // This function is found in F2806x_PieVect.c.
     //
     InitPieVectTable();
-
     //
-    // Step 4. Initialize all the Device Peripherals:
-    // This function is found in F2806x_InitPeripherals.c
-    //
-    //InitPeripherals(); // Not required for this example
 
     //
     // Step 5. User specific code
     //
 
-    scia_fifo_init();      // Initialize the SCI FIFO
-    sciInit();  // Initalize SCI for echoback
 
+    scia_fifo_init();      // Initialize the SCI FIFO
+    sciInit();  // Initalize SCI
+
+    //init cput timers and adc configs
+    #ifdef ADC_CODE
+    adcInit();
+    #endif
+
+    // Start Timer
+    CpuTimer0Regs.TCR.bit.TSS = 0;
     //infinite loop
     for(;;)
     {
@@ -202,8 +223,7 @@ void main(void)
 // scia_echoback_init - Test 1,SCIA  DLB, 8-bit word, baud rate 0x0103,
 // default, 1 STOP bit, no parity
 //
-void
-sciInit()
+void sciInit()
 {
     //
     // Note: Clocks were turned on to the SCIA peripheral
@@ -215,12 +235,10 @@ sciInit()
     // idle-line protocol
     //
     SciaRegs.SCICCR.all =0x0007;
-
     //
     // enable TX, RX, internal SCICLK, Disable RX ERR, SLEEP, TXWAKE
     //
     SciaRegs.SCICTL1.all =0x0003;
-
     SciaRegs.SCICTL2.bit.TXINTENA = 0;
     SciaRegs.SCICTL2.bit.RXBKINTENA = 0;
 
@@ -228,19 +246,17 @@ sciInit()
     // 9600 baud @LSPCLK = 22.5MHz (90 MHz SYSCLK)
     //
     #ifdef CONSOLE_BAUDRATE_9600
-    SciaRegs.SCIHBAUD    =0x0001;
-    SciaRegs.SCILBAUD    =0x0024;
-    SciaRegs.SCICTL1.all =0x0023;  // Relinquish SCI from Reset
+        SciaRegs.SCIHBAUD    =0x0001;
+        SciaRegs.SCILBAUD    =0x0024;
+        SciaRegs.SCICTL1.all =0x0023;  // Relinquish SCI from Reset
     #endif
-
 
 }
 
 //
 // scia_xmit - Transmit a character from the SCI
 //
-void
-scia_xmit(int a)
+void scia_xmit(int a)
 {
     while (SciaRegs.SCIFFTX.bit.TXFFST != 0)
     {
@@ -252,8 +268,7 @@ scia_xmit(int a)
 //
 // scia_msg -
 //
-void
-scia_msg(char * msg)
+void scia_msg(char * msg)
 {
     int i;
     i = 0;
@@ -267,15 +282,14 @@ scia_msg(char * msg)
 //
 // scia_fifo_init - Initalize the SCI FIFO
 //
-void
-scia_fifo_init()
+void scia_fifo_init()
 {
     SciaRegs.SCIFFTX.all=0xE040;
     SciaRegs.SCIFFRX.all=0x2044;
     SciaRegs.SCIFFCT.all=0x0;
 }
 
-void write_console_init_msg(void)
+void write_console_init_msg()
 {
     char *msg;
     msg = "\rHello World!\0";
@@ -284,8 +298,13 @@ void write_console_init_msg(void)
     scia_msg(msg);
 
     #ifdef CONSOLE_BAUDRATE_9600
-    msg = "\r\nConsole Baud Rate is 9600 bps\0";
-    scia_msg(msg);
+        msg = "\r\nConsole Baud Rate is 9600 bps\0";
+        scia_msg(msg);
+    #endif
+
+    #ifdef ADC_CODE
+        msg = "\r\n ADC is Enabled\0";
+        scia_msg(msg);
     #endif
 
     #ifdef CONSOLE_ECHO_MODE
@@ -298,7 +317,7 @@ void write_console_init_msg(void)
 }
 
 #ifdef CONSOLE_ECHO_MODE
-void echo_mode_loop(void)
+void echo_mode_loop()
 {
     Uint16 ReceivedChar;
     char *msg;
@@ -329,6 +348,81 @@ void echo_mode_loop(void)
     scia_xmit(ReceivedChar);
 
 }
+#endif
+
+#ifdef ADC_CODE
+
+    //configures timer and inits cpu interrupt
+    void adcInit()
+    {
+        //reset adc do known levels
+        InitAdc();
+        AdcOffsetSelfCal();
+
+        //configure the timer to make conversion
+        EALLOW;  // This is needed to write to EALLOW protected registers
+        PieVectTable.TINT0 = &cpu_timer0_isr;
+        EDIS;
+        InitCpuTimers();
+        ConfigCpuTimer(&CpuTimer0, CPU_TIMER_MHZ, TIMER_PERIOD_US);
+        //
+        // Use write-only instruction to set TSS bit = 0
+        //
+        CpuTimer0Regs.TCR.all = 0x4000;
+        // Enable CPU int1 which is connected to CPU-Timer 0, CPU int13
+        IER |= M_INT1;
+        //
+        // Enable TINT0 in the PIE: Group 1 interrupt 7
+        //
+        PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
+        //
+        // Enable global Interrupts and higher priority real-time debug events:
+        //
+        EINT;   // Enable Global interrupt INTM
+        ERTM;   // Enable Global realtime interrupt DBGM
+    }
+
+    __interrupt void cpu_timer0_isr(void)
+    {
+
+        //do something with the code
+        //
+
+        Uint16 ADC_Result;
+        Uint16 i = 0;
+        // Start ADC conversion
+        AdcRegs.ADCSOCFRC1.bit.SOC0 = 1;
+        while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
+        AdcRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //Clear ADCINT1
+        ADC_Result = AdcResult.ADCRESULT0;
+
+        if(sample_counter == MAX_SAMPLES-1)
+            {
+                sample_counter = 0;
+            }
+
+        // Convert the ADC result to voltage
+        if(ADC_Result > ADC_THRESHOLD_VALUE)
+        {
+
+            sample_data[i] = 1;
+            sample_counter = sample_counter+1;
+            i++;
+        }
+        else
+        {
+            sample_data[i] = 1;
+            sample_counter = sample_counter+1;
+            i++;
+        }
+
+
+        //
+        // Acknowledge this interrupt to receive more interrupts from group 1
+        //
+        PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+    }
+
 #endif
 
 //
