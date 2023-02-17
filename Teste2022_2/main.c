@@ -169,13 +169,15 @@ Here's a high-level overview of the steps involved:
 #ifdef ADC_CODE
     void adcInit();
     __interrupt void cpu_timer0_isr();
-    void process_manchester(void);
+    void process_manchester();
 #endif
 //
 // Globals
 //
+#ifdef ADC_CODE
     Uint16 adc_buffer[MAX_ADC_SAMPLES] = {0};
-    volatile enum CtrlFlag buffer_stuffed = NO;
+    volatile Uint8 buffer_head = 0;
+#endif
 //
 // Main
 //
@@ -252,7 +254,6 @@ void main(void)
 
     EnableInterrupts(); //enables interrupts
 
-
 #ifdef CONSOLE_BAUDRATE_9600
     scia_fifo_init();      // Initialize the SCI FIFO
     sciInit();  // Initalize SCI
@@ -274,11 +275,11 @@ void main(void)
             void echo_mode_loop(void);
         #endif
 
-        if(buffer_stuffed == YES)
+        //check if buffer is full.
+        if(buffer_head > MAX_ADC_SAMPLES)
         {
-
+            process_manchester();
         }
-
 
     }
 }
@@ -335,8 +336,7 @@ void scia_xmit(int a)
 //
 void scia_msg(char * msg)
 {
-    int i;
-    i = 0;
+    Uint8 i = 0;
     while(msg[i] != '\0')
     {
         scia_xmit(msg[i]);
@@ -462,30 +462,26 @@ void echo_mode_loop()
 
         //do something with the code
         //
-        int i = 0;
-        Uint16 ADC_Result; //result of conversion
+
+        //Uint16 ADC_Result; //result of conversion
 
         #ifdef GPIO_TOGGLE
             //Toggles GPIO0 every interruption (used to check time between isr's)
             GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1; //toggle GPIO upon isr
         #endif
 
-        while(buffer_stuffed == NO)
-        {
-            // Start ADC conversion
-            AdcRegs.ADCSOCFRC1.bit.SOC0 = 1;
-            while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
-            AdcRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //Clear ADCINT1
-            ADC_Result = AdcResult.ADCRESULT0;
+        /*
+        // Start ADC conversion
+        AdcRegs.ADCSOCFRC1.bit.SOC0 = 1;
+        while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
+        AdcRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //Clear ADCINT1
+        ADC_Result = AdcResult.ADCRESULT0;
+        */
 
-            //fills the buffer with the digitalized signal
-            adc_buffer[i] = ADC_Result;
-            i++;
-            if( i == MAX_ADC_SAMPLES )
-            {
-                buffer_stuffed == YES;
-            }
-        }
+        //fills the buffer with the digitalized signal
+        //adc_buffer[i] = ADC_Result;
+        adc_buffer[buffer_head] = buffer_head;
+        buffer_head++;
 
         //
         // Acknowledge this interrupt to receive more interrupts from group 1
@@ -493,14 +489,17 @@ void echo_mode_loop()
         PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
     }
 
-    void process_manchester(void)
+    void process_manchester()
     {
+
         //do something with the code
-        buffer_stuffed == NO;
+        //restart buffer and buffer flag
+        buffer_head = 0;
         #ifdef GPIO_TOGGLE
             //Toggles GPIO0 every interruption (used to check time between isr's)
             GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1; //toggle GPIO upon isr
         #endif
+
     }
 
 
