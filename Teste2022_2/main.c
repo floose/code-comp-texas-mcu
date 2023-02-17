@@ -175,7 +175,7 @@ Here's a high-level overview of the steps involved:
 // Globals
 //
     Uint16 adc_buffer[MAX_ADC_SAMPLES] = {0};
-    enum CtrlFlag buffer_stuffed = NO;
+    volatile enum CtrlFlag buffer_stuffed = NO;
 //
 // Main
 //
