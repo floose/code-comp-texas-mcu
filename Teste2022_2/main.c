@@ -84,31 +84,61 @@
 // $
 //###########################################################################
 
+/*############################## CODE TO DETECT AN ANALOG MANCHESTER SIGNAL
+ * AUTHOR:FELIPE LOOSE, BASED ON TEXAS INSTRUMENT'S C2000 EXAMPLES
+ * DESCRIPTION:
+ * The basic idea is to use a timer interrupt to trigger the start of an ADC conversion.
+ * To do this, you would configure the timer to generate an interrupt at a fixed frequency,
+ * and then use the interrupt service routine (ISR) to trigger the start of an ADC conversion.
+
+Here's a high-level overview of the steps involved:
+
+    (1)Configure the timer module to generate an interrupt at a fixed frequency.
+    For example, if you want to sample the analog signal every 1 microsecond,
+    you could set the timer period to 1 microsecond.
+
+    (2)In the timer interrupt service routine,
+    start an ADC conversion by setting the SOC (Start of Conversion) bit in the ADC control register.
+
+    (3)When the ADC completes the conversion, it will set the EOC (End of Conversion) bit in the ADC status register.
+    You can check this bit in your main program loop to read the ADC result and start another conversion.
+ *
+ */
+
 //
 //My Defines
 //
 //##### Define BAUDRATE
 //uncoment the desired baudrate to define the registers
+//this baud rates indicates the rate between writing and receiving info from the PC
+//via console
 #define CONSOLE_BAUDRATE_9600
 //#define CONSOLE_BAUDRATE_115200
-
 //##### Define ECHO MODE
 //enables echo mode (example of initial application)
 #define CONSOLE_ECHO_MODE
-
-
 //#### DEFINE ADC CODE
 //enables the codes for the ADC
 #define ADC_CODE
+//#### DEFINE TOGGLE GPO
+//uses to enable GPIO toggle between ISR's
+#define GPIO_TOGGLE
 
-//defining ADC CODE defines
+//#### DEFINE ADC CODE AND TIMER
 #ifdef ADC_CODE
     #define ADC_RESOLUTION 4096 // 12-bit ADC resolution
     #define ADC_THRESHOLD_VALUE 620 //aprox 500 mV threshold
+
     //the next defines configure the sampling rate of the timer and adc
+    /*
+     * CPU_TIMER_MHZ dictates the clock of the system. Usual is 90 MHz
+     * TIMER_PERIOD_US indicates the time between interruptions
+     * MAX_ADC_SAMPLES dictates the number of the buffer samples to be stored
+     *
+     */
     #define CPU_TIMER_MHZ 90 //clock of timer
     #define TIMER_PERIOD_US 1 //symbol rate period
-    #define MAX_ADC_SAMPLES 4 //defines the maximum samples per symbol
+    #define MAX_ADC_SAMPLES 10 //defines the maximum samples per symbol
     enum CtrlFlag {YES, NO}; //flag to indicate adc buffer complete
 #endif
 
@@ -131,12 +161,12 @@ void write_console_init_msg();
 #ifdef ADC_CODE
     void adcInit();
     __interrupt void cpu_timer0_isr(void);
-    void init_adc_buffer();
+
 #endif
 //
 // Globals
 //
-Uint16 adc_buffer[MAX_ADC_SAMPLES];
+Uint16 adc_buffer[MAX_ADC_SAMPLES] = {0};
 enum CtrlFlag buffer_stuffed = NO;
 //
 // Main
@@ -201,14 +231,16 @@ void main(void)
     //
 
     //initialize GPIO to toggle them at the timer interrupt
+    #ifdef GPIO_TOGGLE
     EALLOW;
     GpioCtrlRegs.GPADIR.bit.GPIO0 = 1; //configures GPIO0 as output
     GpioDataRegs.GPADAT.bit.GPIO0 = 0; //sets to zero
     EDIS;
+    #endif
 
     EnableInterrupts(); //enables interrupts
 
-    init_adc_buffer(); //initializes the buffer with zeros
+
 
     scia_fifo_init();      // Initialize the SCI FIFO
     sciInit();  // Initalize SCI
@@ -408,8 +440,11 @@ void echo_mode_loop()
 
         //do something with the code
         //
-        GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1; //toggle GPIO upon isr
 
+        #ifdef GPIO_TOGGLE
+            //Toggles GPIO0 every interruption (used to check time between isr's)
+            GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1; //toggle GPIO upon isr
+        #endif
         /*
         Uint16 ADC_Result; //result of conversion
         int i = 0;
@@ -437,16 +472,6 @@ void echo_mode_loop()
         PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
     }
 
-    //initializes the vector buffer with zeros.
-    void init_adc_buffer()
-    {
-        int i;
-
-        for(i = 0 ; i < MAX_ADC_SAMPLES ; i ++)
-        {
-            adc_buffer[i] = 0;
-        }
-    }
 
 #endif
 
