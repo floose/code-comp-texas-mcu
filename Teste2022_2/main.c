@@ -107,9 +107,11 @@
     #define ADC_THRESHOLD_VALUE 620 //aprox 500 mV threshold
     //the next defines configure the sampling rate of the timer and adc
     #define CPU_TIMER_MHZ 80 //clock of timer
-    #define TIMER_PERIOD_US 0.5 //symbol rate period
-    #define MAX_ADC_SAMPLES 2 //defines the maximum samples per symbol
+    #define TIMER_PERIOD_US 0.125 //symbol rate period
+    #define MAX_ADC_SAMPLES 8 //defines the maximum samples per symbol
+    enum CtrlFlag {YES, NO}; //flag to indicate adc buffer complete
 #endif
+
 //
 // Included Files
 //
@@ -129,12 +131,13 @@ void write_console_init_msg();
 #ifdef ADC_CODE
     void adcInit();
     __interrupt void cpu_timer0_isr(void);
+    void init_adc_buffer();
 #endif
 //
 // Globals
 //
-Uint16 detected_symbol[2] = {0,0};
-Uint16 symbol_counter = 0;
+Uint16 adc_buffer[MAX_ADC_SAMPLES];
+enum CtrlFlag buffer_stuffed = NO;
 //
 // Main
 //
@@ -197,6 +200,9 @@ void main(void)
     // Step 5. User specific code
     //
 
+    EnableInterrupts(); //enables interrupts
+
+    init_adc_buffer(); //initializes the buffer with zeros
 
     scia_fifo_init();      // Initialize the SCI FIFO
     sciInit();  // Initalize SCI
@@ -360,6 +366,12 @@ void echo_mode_loop()
         InitAdc();
         AdcOffsetSelfCal();
 
+        //Configuring the ADC
+        EALLOW;
+        AdcRegs.ADCCTL1.bit.ADCENABLE = 0; //disable ADC to make changes
+        AdcRegs.ADCSOC0CTL.bit.CHSEL = 0; // Use ADCINA0 input channel
+        EDIS;
+
         //configure the timer to make conversion
         EALLOW;  // This is needed to write to EALLOW protected registers
         PieVectTable.TINT0 = &cpu_timer0_isr;
@@ -383,55 +395,47 @@ void echo_mode_loop()
         ERTM;   // Enable Global realtime interrupt DBGM
     }
 
+        //interruption code of timer
     __interrupt void cpu_timer0_isr(void)
     {
 
         //do something with the code
         //
 
-        Uint16 ADC_Result;
-        Uint16 i = 0;
-        // Start ADC conversion
-        AdcRegs.ADCSOCFRC1.bit.SOC0 = 1;
-        while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
-        AdcRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //Clear ADCINT1
-        ADC_Result = AdcResult.ADCRESULT0;
+        Uint16 ADC_Result; //result of conversion
+        int i = 0;
 
-        //if sample_counters overflows, starts new symbol detection and decides the bit
-        if(sample_counter == MAX_SAMPLES)
+        while(buffer_stuffed == NO)
+        {
+            // Start ADC conversion
+            AdcRegs.ADCSOCFRC1.bit.SOC0 = 1;
+            while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
+            AdcRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //Clear ADCINT1
+            ADC_Result = AdcResult.ADCRESULT0;
+
+            //fills the buffer with the digitalized signal
+            adc_buffer[i] = ADC_Result;
+            i++;
+            if( i == MAX_ADC_SAMPLES )
             {
-                symbol_counter = 0;
-                if( detected_symbol[0] > detected_symbol[1])
-                {
-                   //this is bit one\
-                   //do something with the code
-                }
-                else
-                {
-                    //this is bit zero
-                    //do something with the code
-                }
-
+                buffer_stuffed == YES;
             }
-
-        // Convert the ADC result to voltage and formats the detected symbol
-        if(ADC_Result > ADC_THRESHOLD_VALUE)
-        {
-
-            detected_symbol[symbol_counter] = 1;
-            symbol_counter = symbol_counter+1;
         }
-        else
-        {
-            detected_symbol[symbol_counter]= 0;
-            symbol_counter = symbol_counter+1;
-        }
-
-
         //
         // Acknowledge this interrupt to receive more interrupts from group 1
         //
         PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+    }
+
+    //initializes the vector buffer with zeros.
+    void init_adc_buffer()
+    {
+        int i;
+
+        for(i = 0 ; i < MAX_ADC_SAMPLES ; i ++)
+        {
+            adc_buffer[i] = 0;
+        }
     }
 
 #endif
