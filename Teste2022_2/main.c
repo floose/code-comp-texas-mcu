@@ -106,9 +106,9 @@
     #define ADC_RESOLUTION 4096 // 12-bit ADC resolution
     #define ADC_THRESHOLD_VALUE 620 //aprox 500 mV threshold
     //the next defines configure the sampling rate of the timer and adc
-    #define CPU_TIMER_MHZ 80 //clock of timer
-    #define TIMER_PERIOD_US 0.125 //symbol rate period
-    #define MAX_ADC_SAMPLES 8 //defines the maximum samples per symbol
+    #define CPU_TIMER_MHZ 90 //clock of timer
+    #define TIMER_PERIOD_US 1 //symbol rate period
+    #define MAX_ADC_SAMPLES 4 //defines the maximum samples per symbol
     enum CtrlFlag {YES, NO}; //flag to indicate adc buffer complete
 #endif
 
@@ -384,6 +384,7 @@ void echo_mode_loop()
         EDIS;
         InitCpuTimers();
         ConfigCpuTimer(&CpuTimer0, CPU_TIMER_MHZ, TIMER_PERIOD_US);
+
         //
         // Use write-only instruction to set TSS bit = 0
         //
