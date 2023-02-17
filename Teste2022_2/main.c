@@ -200,6 +200,12 @@ void main(void)
     // Step 5. User specific code
     //
 
+    //initialize GPIO to toggle them at the timer interrupt
+    EALLOW;
+    GpioCtrlRegs.GPADIR.bit.GPIO0 = 1; //configures GPIO0 as output
+    GpioDataRegs.GPADAT.bit.GPIO0 = 0; //sets to zero
+    EDIS;
+
     EnableInterrupts(); //enables interrupts
 
     init_adc_buffer(); //initializes the buffer with zeros
@@ -401,7 +407,9 @@ void echo_mode_loop()
 
         //do something with the code
         //
+        GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1; //toggle GPIO upon isr
 
+        /*
         Uint16 ADC_Result; //result of conversion
         int i = 0;
 
@@ -421,6 +429,7 @@ void echo_mode_loop()
                 buffer_stuffed == YES;
             }
         }
+        */
         //
         // Acknowledge this interrupt to receive more interrupts from group 1
         //
