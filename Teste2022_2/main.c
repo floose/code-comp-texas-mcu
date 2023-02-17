@@ -109,19 +109,23 @@ Here's a high-level overview of the steps involved:
 //My Defines
 //
 //##### Define BAUDRATE
-//uncoment the desired baudrate to define the registers
+//this guard defines the console application
+//to communicate between the computer and the board with a baud-rate of 9600 bps
+//Use teraterm to enable communication
 //this baud rates indicates the rate between writing and receiving info from the PC
 //via console
-#define CONSOLE_BAUDRATE_9600
+//#define CONSOLE_BAUDRATE_9600
 //#define CONSOLE_BAUDRATE_115200
+
 //##### Define ECHO MODE
 //enables echo mode (example of initial application)
-#define CONSOLE_ECHO_MODE
+//#define CONSOLE_ECHO_MODE
+
 //#### DEFINE ADC CODE
 //enables the codes for the ADC
 #define ADC_CODE
 //#### DEFINE TOGGLE GPO
-//uses to enable GPIO toggle between ISR's
+//defines GPIOs to use them as flags of entrance at each part of the code
 #define GPIO_TOGGLE
 
 //#### DEFINE ADC CODE AND TIMER
@@ -150,24 +154,28 @@ Here's a high-level overview of the steps involved:
 //
 // Function Prototypes
 //
-void sciInit();
-void scia_fifo_init();
-void scia_xmit(int a);
-void scia_msg(char *msg);
-void write_console_init_msg();
+#ifdef CONSOLE_BAUDRATE_9600
+    void sciInit();
+    void scia_fifo_init();
+    void scia_xmit(int a);
+    void scia_msg(char *msg);
+    void write_console_init_msg();
+#endif
+
 #ifdef CONSOLE_ECHO_MODE
     void echo_mode_loop();
 #endif
+
 #ifdef ADC_CODE
     void adcInit();
-    __interrupt void cpu_timer0_isr(void);
-
+    __interrupt void cpu_timer0_isr();
+    void process_manchester(void);
 #endif
 //
 // Globals
 //
-Uint16 adc_buffer[MAX_ADC_SAMPLES] = {0};
-enum CtrlFlag buffer_stuffed = NO;
+    Uint16 adc_buffer[MAX_ADC_SAMPLES] = {0};
+    enum CtrlFlag buffer_stuffed = NO;
 //
 // Main
 //
@@ -233,22 +241,27 @@ void main(void)
     //initialize GPIO to toggle them at the timer interrupt
     #ifdef GPIO_TOGGLE
     EALLOW;
+    //GPIO0 toggles at every ISR
     GpioCtrlRegs.GPADIR.bit.GPIO0 = 1; //configures GPIO0 as output
     GpioDataRegs.GPADAT.bit.GPIO0 = 0; //sets to zero
+    //GPIO0 toggles at every manchester decode, when the data buffer is full
+    GpioCtrlRegs.GPADIR.bit.GPIO1 = 1; //configures GPIO0 as output
+    GpioDataRegs.GPADAT.bit.GPIO1 = 0; //sets to zero
     EDIS;
     #endif
 
     EnableInterrupts(); //enables interrupts
 
 
-
+#ifdef CONSOLE_BAUDRATE_9600
     scia_fifo_init();      // Initialize the SCI FIFO
     sciInit();  // Initalize SCI
+#endif
 
     //init cput timers and adc configs
-    #ifdef ADC_CODE
+#ifdef ADC_CODE
     adcInit();
-    #endif
+#endif
 
     // Start Timer
     CpuTimer0Regs.TCR.bit.TSS = 0;
@@ -261,6 +274,12 @@ void main(void)
             void echo_mode_loop(void);
         #endif
 
+        if(buffer_stuffed == YES)
+        {
+
+        }
+
+
     }
 }
 
@@ -268,6 +287,7 @@ void main(void)
 // scia_echoback_init - Test 1,SCIA  DLB, 8-bit word, baud rate 0x0103,
 // default, 1 STOP bit, no parity
 //
+#ifdef CONSOLE_BAUDRATE_9600
 void sciInit()
 {
     //
@@ -342,10 +362,10 @@ void write_console_init_msg()
     msg = "\r\nConsole Application PLC-VLC\0";
     scia_msg(msg);
 
-    #ifdef CONSOLE_BAUDRATE_9600
+
         msg = "\r\nConsole Baud Rate is 9600 bps\0";
         scia_msg(msg);
-    #endif
+
 
     #ifdef ADC_CODE
         msg = "\r\n ADC is Enabled\0";
@@ -360,6 +380,8 @@ void write_console_init_msg()
     #endif
 
 }
+
+#endif
 
 #ifdef CONSOLE_ECHO_MODE
 void echo_mode_loop()
@@ -440,14 +462,13 @@ void echo_mode_loop()
 
         //do something with the code
         //
+        int i = 0;
+        Uint16 ADC_Result; //result of conversion
 
         #ifdef GPIO_TOGGLE
             //Toggles GPIO0 every interruption (used to check time between isr's)
             GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1; //toggle GPIO upon isr
         #endif
-        /*
-        Uint16 ADC_Result; //result of conversion
-        int i = 0;
 
         while(buffer_stuffed == NO)
         {
@@ -465,15 +486,27 @@ void echo_mode_loop()
                 buffer_stuffed == YES;
             }
         }
-        */
+
         //
         // Acknowledge this interrupt to receive more interrupts from group 1
         //
         PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
     }
 
+    void process_manchester(void)
+    {
+        //do something with the code
+        buffer_stuffed == NO;
+        #ifdef GPIO_TOGGLE
+            //Toggles GPIO0 every interruption (used to check time between isr's)
+            GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1; //toggle GPIO upon isr
+        #endif
+    }
+
 
 #endif
+
+
 
 //
 // End of File
