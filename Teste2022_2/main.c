@@ -128,10 +128,14 @@ Here's a high-level overview of the steps involved:
 //defines GPIOs to use them as flags of entrance at each part of the code
 #define GPIO_TOGGLE
 
+//#### DEFINE MANCHESTER PROCESSING
+//defines to enable the function of processing manchester code
+#define MANCHESTER_PROCESS
+
 //#### DEFINE ADC CODE AND TIMER
 #ifdef ADC_CODE
     #define ADC_RESOLUTION 4096 // 12-bit ADC resolution
-    #define ADC_THRESHOLD_VALUE 620 //aprox 500 mV threshold
+    #define ADC_MID_VALUE 2048
 
     //the next defines configure the sampling rate of the timer and adc
     /*
@@ -141,8 +145,9 @@ Here's a high-level overview of the steps involved:
      *
      */
     #define CPU_TIMER_MHZ 90 //clock of timer
-    #define TIMER_PERIOD_US 1 //symbol rate period
+    #define TIMER_PERIOD_US 1 //sampling rate period
     #define MAX_ADC_SAMPLES 10 //defines the maximum samples per symbol
+
     enum CtrlFlag {YES, NO}; //flag to indicate adc buffer complete
 #endif
 
@@ -169,14 +174,23 @@ Here's a high-level overview of the steps involved:
 #ifdef ADC_CODE
     void adcInit();
     __interrupt void cpu_timer0_isr();
+#endif
+
+#ifdef MANCHESTER_PROCESS
     void process_manchester();
 #endif
+
 //
 // Globals
 //
 #ifdef ADC_CODE
     Uint16 adc_buffer[MAX_ADC_SAMPLES] = {0};
     volatile Uint8 buffer_head = 0;
+    enum CtrlFlag buffer_flag = NO;
+#endif
+
+#ifdef MANCHESTER_PROCESS
+    unsigned char process_manchester();
 #endif
 //
 // Main
@@ -240,6 +254,9 @@ void main(void)
     // Step 5. User specific code
     //
 
+    //initialize LED to indicate Timer interrupt
+
+
     //initialize GPIO to toggle them at the timer interrupt
     #ifdef GPIO_TOGGLE
     EALLOW;
@@ -262,24 +279,28 @@ void main(void)
     //init cput timers and adc configs
 #ifdef ADC_CODE
     adcInit();
-#endif
-
     // Start Timer
     CpuTimer0Regs.TCR.bit.TSS = 0;
+#endif
+
     //infinite loop
     for(;;)
     {
+        #ifdef CONSOLE_BAUDRATE_9600
+        //insert here loop processes for the console msg handler
+        #endif
 
-        //enables ECHO MODE
-        #ifdef CONSOLE_ECHO_MODE
+        #ifdef CONSOLE_ECHO_MODE //enables ECHO MODE
             void echo_mode_loop(void);
         #endif
 
-        //check if buffer is full.
-        if(buffer_head > MAX_ADC_SAMPLES)
-        {
-            process_manchester();
-        }
+        #ifdef MANCHESTER_PROCESS
+            if(buffer_flag == YES)
+            {
+                buffer_flag = NO; //restart the buffer
+                process_manchester(); //processes the buffer manchester
+            }
+        #endif
 
     }
 }
@@ -429,7 +450,10 @@ void echo_mode_loop()
         //Configuring the ADC
         EALLOW;
         AdcRegs.ADCCTL1.bit.ADCENABLE = 0; //disable ADC to make changes
-        AdcRegs.ADCSOC0CTL.bit.CHSEL = 0; // Use ADCINA0 input channel
+        AdcRegs.ADCSOC0CTL.bit.TRIGSEL = 0 //adc triggers via software only
+        //AdcRegs.ADCSOC0CTL.bit.CHSEL = 1; //adc triggers via cpu timer 0
+        AdcRegs.ADCSOC0CTL.bit.CHSEL = 0;  //select adc channel ADCINA0
+        AdcRegs.INTSEL1N2.bit.INT1SEL = 1; //Connect ADCINT1 to EOC1
         EDIS;
 
         //configure the timer to make conversion
@@ -461,51 +485,50 @@ void echo_mode_loop()
     {
 
         //do something with the code
-        //
-
-        //Uint16 ADC_Result; //result of conversion
-
         #ifdef GPIO_TOGGLE
             //Toggles GPIO0 every interruption (used to check time between isr's)
             GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1; //toggle GPIO upon isr
         #endif
 
-        /*
         // Start ADC conversion
-        AdcRegs.ADCSOCFRC1.bit.SOC0 = 1;
+        AdcRegs.ADCSOCFRC1.bit.SOC0 = 1; //force SOC0 conversion
         while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
+        adc_buffer[buffer_head] = AdcResult.ADCRESULT0; //get value from adc
+
+        if(buffer_head == MAX_ADC_SAMPLES)
+        {
+            buffer_head = 0;
+            buffer_flag = YES;
+        }
+        else
+        {
+            buffer_head++;
+        }
+
         AdcRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //Clear ADCINT1
-        ADC_Result = AdcResult.ADCRESULT0;
-        */
-
-        //fills the buffer with the digitalized signal
-        //adc_buffer[i] = ADC_Result;
-        adc_buffer[buffer_head] = buffer_head;
-        buffer_head++;
-
-        //
-        // Acknowledge this interrupt to receive more interrupts from group 1
-        //
-        PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+        PieCtrlRegs.PIEACK.all = PIEACK_GROUP1; //acknowledge interrupt
     }
 
-    void process_manchester()
+
+
+
+#endif
+
+#ifdef MANCHESTER_PROCESS
+    unsigned char process_manchester()
     {
 
         //do something with the code
-        //restart buffer and buffer flag
-        buffer_head = 0;
+        //toggles gpio
         #ifdef GPIO_TOGGLE
             //Toggles GPIO0 every interruption (used to check time between isr's)
             GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1; //toggle GPIO upon isr
         #endif
 
+        //processes manchester symbol
+
     }
-
-
 #endif
-
-
 
 //
 // End of File
