@@ -106,6 +106,13 @@ Here's a high-level overview of the steps involved:
  */
 
 //
+// Included Files
+//
+#include "DSP28x_Project.h"     // Device Headerfile and Examples Include File
+#include <math.h>
+#include <stdbool.h>
+//
+//
 //My Defines
 //
 //##### Define BAUDRATE
@@ -131,7 +138,7 @@ Here's a high-level overview of the steps involved:
 //#### DEFINE ADC CODE AND TIMER
 #ifdef ADC_CODE
     #define ADC_RESOLUTION 4096 // 12-bit ADC resolution
-    #define ADC_THRESHOLD_VALUE 620 //aprox 500 mV threshold
+    #define ADC_THRESHOLD_VALUE 3000
 
     //the next defines configure the sampling rate of the timer and adc
     /*
@@ -143,15 +150,11 @@ Here's a high-level overview of the steps involved:
     #define CPU_TIMER_MHZ 90 //clock of timer
     #define TIMER_PERIOD_US 1 //symbol rate period
     #define MAX_ADC_SAMPLES 10 //defines the maximum samples per symbol
-    enum CtrlFlag {YES, NO}; //flag to indicate adc buffer complete
+
+    //enum CtrlFlag{YES,NO};
 #endif
 
-//
-// Included Files
-//
-#include "DSP28x_Project.h"     // Device Headerfile and Examples Include File
-#include <math.h>
-//
+
 // Function Prototypes
 //
 #ifdef CONSOLE_BAUDRATE_9600
@@ -169,14 +172,20 @@ Here's a high-level overview of the steps involved:
 #ifdef ADC_CODE
     void adcInit();
     __interrupt void cpu_timer0_isr();
-    void process_manchester();
+    void detect_manchester_symbol();
+    void format_ascii_char();
 #endif
 //
 // Globals
 //
 #ifdef ADC_CODE
-    Uint16 adc_buffer[MAX_ADC_SAMPLES] = {0};
-    volatile Uint8 buffer_head = 0;
+    volatile Uint16 adc_buffer[MAX_ADC_SAMPLES] = {0};
+    volatile Uint16 buffer_head = 0;
+    //volatile enum CtrlFlag buffer_full = NO;
+    volatile bool buffer_full = false;
+    volatile Uint8 decoded_byte = 0;
+    volatile Uint8 bits_received = 0;
+    Uint16 sum = 0;;
 #endif
 //
 // Main
@@ -267,6 +276,8 @@ void main(void)
     // Start Timer
     CpuTimer0Regs.TCR.bit.TSS = 0;
     //infinite loop
+
+
     for(;;)
     {
 
@@ -275,11 +286,32 @@ void main(void)
             void echo_mode_loop(void);
         #endif
 
-        //check if buffer is full.
-        if(buffer_head > MAX_ADC_SAMPLES)
-        {
-            process_manchester();
-        }
+        #ifdef ADC_CODE
+
+            while(!buffer_full) {};
+
+            // Calculate average value of the buffer
+            for(i = 0 ; i < MAX_ADC_SAMPLES ; i++)
+            {
+                sum += adc_buffer[i];
+            }
+            avg_value = sum/MAX_ADC_SAMPLES;
+
+            // Process each sample in the buffer
+            for (i = 0; i < MAX_ADC_SAMPLES ; i++)
+            {
+                bool bit_value = adc_buffer[i] > sum;
+                process_bit(bit_value);
+
+                /*
+                if( adc_buffer[i] > sum)
+                {
+                    process_bit();
+                }
+                */
+            }
+
+        #endif
 
     }
 }
@@ -470,36 +502,21 @@ void echo_mode_loop()
             GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1; //toggle GPIO upon isr
         #endif
 
-        /*
+
         // Start ADC conversion
         AdcRegs.ADCSOCFRC1.bit.SOC0 = 1;
-        while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
+        //while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
         AdcRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //Clear ADCINT1
-        ADC_Result = AdcResult.ADCRESULT0;
-        */
+        sum += AdcResult.ADCRESULT0;
+        buffer_head = (buffer_head + 1) % MAX_ADC_SAMPLES;
 
-        //fills the buffer with the digitalized signal
-        //adc_buffer[i] = ADC_Result;
-        adc_buffer[buffer_head] = buffer_head;
-        buffer_head++;
+        if(buffer_head == MAX_ADC_SAMPLES)
+        {
+            buffer_head = 0;
+            buffer_full = true;
+        }
 
-        //
-        // Acknowledge this interrupt to receive more interrupts from group 1
-        //
         PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
-    }
-
-    void process_manchester()
-    {
-
-        //do something with the code
-        //restart buffer and buffer flag
-        buffer_head = 0;
-        #ifdef GPIO_TOGGLE
-            //Toggles GPIO0 every interruption (used to check time between isr's)
-            GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1; //toggle GPIO upon isr
-        #endif
-
     }
 
 
