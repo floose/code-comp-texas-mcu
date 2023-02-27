@@ -106,6 +106,13 @@ Here's a high-level overview of the steps involved:
  */
 
 //
+// Included Files
+//
+#include "DSP28x_Project.h"     // Device Headerfile and Examples Include File
+#include <math.h>
+#include <stdbool.h>
+//
+//
 //My Defines
 //
 //##### Define BAUDRATE
@@ -135,7 +142,11 @@ Here's a high-level overview of the steps involved:
 //#### DEFINE ADC CODE AND TIMER
 #ifdef ADC_CODE
     #define ADC_RESOLUTION 4096 // 12-bit ADC resolution
+<<<<<<< HEAD
     #define ADC_MID_VALUE 2048
+=======
+    #define ADC_THRESHOLD_VALUE 3000
+>>>>>>> temp
 
     //the next defines configure the sampling rate of the timer and adc
     /*
@@ -148,15 +159,14 @@ Here's a high-level overview of the steps involved:
     #define TIMER_PERIOD_US 1 //sampling rate period
     #define MAX_ADC_SAMPLES 10 //defines the maximum samples per symbol
 
+<<<<<<< HEAD
     enum CtrlFlag {YES, NO}; //flag to indicate adc buffer complete
+=======
+    //enum CtrlFlag{YES,NO};
+>>>>>>> temp
 #endif
 
-//
-// Included Files
-//
-#include "DSP28x_Project.h"     // Device Headerfile and Examples Include File
-#include <math.h>
-//
+
 // Function Prototypes
 //
 #ifdef CONSOLE_BAUDRATE_9600
@@ -174,16 +184,22 @@ Here's a high-level overview of the steps involved:
 #ifdef ADC_CODE
     void adcInit();
     __interrupt void cpu_timer0_isr();
+<<<<<<< HEAD
 #endif
 
 #ifdef MANCHESTER_PROCESS
     void process_manchester();
+=======
+    void detect_manchester_symbol();
+    void format_ascii_char();
+>>>>>>> temp
 #endif
 
 //
 // Globals
 //
 #ifdef ADC_CODE
+<<<<<<< HEAD
     Uint16 adc_buffer[MAX_ADC_SAMPLES] = {0};
     volatile Uint8 buffer_head = 0;
     enum CtrlFlag buffer_flag = NO;
@@ -191,6 +207,15 @@ Here's a high-level overview of the steps involved:
 
 #ifdef MANCHESTER_PROCESS
     unsigned char process_manchester();
+=======
+    volatile Uint16 adc_buffer[MAX_ADC_SAMPLES] = {0};
+    volatile Uint16 buffer_head = 0;
+    //volatile enum CtrlFlag buffer_full = NO;
+    volatile bool buffer_full = false;
+    volatile Uint8 decoded_byte = 0;
+    volatile Uint8 bits_received = 0;
+    Uint16 sum = 0;;
+>>>>>>> temp
 #endif
 //
 // Main
@@ -284,6 +309,8 @@ void main(void)
 #endif
 
     //infinite loop
+
+
     for(;;)
     {
         #ifdef CONSOLE_BAUDRATE_9600
@@ -294,12 +321,40 @@ void main(void)
             void echo_mode_loop(void);
         #endif
 
+<<<<<<< HEAD
         #ifdef MANCHESTER_PROCESS
             if(buffer_flag == YES)
             {
                 buffer_flag = NO; //restart the buffer
                 process_manchester(); //processes the buffer manchester
             }
+=======
+        #ifdef ADC_CODE
+
+            while(!buffer_full) {};
+
+            // Calculate average value of the buffer
+            for(i = 0 ; i < MAX_ADC_SAMPLES ; i++)
+            {
+                sum += adc_buffer[i];
+            }
+            avg_value = sum/MAX_ADC_SAMPLES;
+
+            // Process each sample in the buffer
+            for (i = 0; i < MAX_ADC_SAMPLES ; i++)
+            {
+                bool bit_value = adc_buffer[i] > sum;
+                process_bit(bit_value);
+
+                /*
+                if( adc_buffer[i] > sum)
+                {
+                    process_bit();
+                }
+                */
+            }
+
+>>>>>>> temp
         #endif
 
     }
@@ -490,6 +545,7 @@ void echo_mode_loop()
             GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1; //toggle GPIO upon isr
         #endif
 
+<<<<<<< HEAD
         // Start ADC conversion
         AdcRegs.ADCSOCFRC1.bit.SOC0 = 1; //force SOC0 conversion
         while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
@@ -528,6 +584,26 @@ void echo_mode_loop()
         //processes manchester symbol
 
     }
+=======
+
+        // Start ADC conversion
+        AdcRegs.ADCSOCFRC1.bit.SOC0 = 1;
+        //while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
+        AdcRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //Clear ADCINT1
+        sum += AdcResult.ADCRESULT0;
+        buffer_head = (buffer_head + 1) % MAX_ADC_SAMPLES;
+
+        if(buffer_head == MAX_ADC_SAMPLES)
+        {
+            buffer_head = 0;
+            buffer_full = true;
+        }
+
+        PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+    }
+
+
+>>>>>>> temp
 #endif
 
 //
