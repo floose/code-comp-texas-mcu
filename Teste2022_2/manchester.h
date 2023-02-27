@@ -17,7 +17,7 @@ void manchester_set_parameters(unsigned char b_size,
 //processes ADC samples. Only input scope function
 unsigned char process_sample(unsigned short int sample);
 //processes the bit, used only inside the scope
-static unsigned char process_bit(unsigned char bit_value);
+static void process_bit(unsigned char bit_value);
 //gets the delivered bit
 unsigned char get_data_byte();
 

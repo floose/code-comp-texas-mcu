@@ -109,8 +109,9 @@ Here's a high-level overview of the steps involved:
 // Included Files
 //
 #include "DSP28x_Project.h"     // Device Headerfile and Examples Include File
-#include <math.h>
+//#include <math.h>
 #include <stdbool.h>
+#include "manchester.h"
 //
 //
 //My Defines
@@ -137,33 +138,28 @@ Here's a high-level overview of the steps involved:
 
 //#### DEFINE MANCHESTER PROCESSING
 //defines to enable the function of processing manchester code
-#define MANCHESTER_PROCESS
+//#define MANCHESTER_PROCESS
 
 //#### DEFINE ADC CODE AND TIMER
 #ifdef ADC_CODE
     #define ADC_RESOLUTION 4096 // 12-bit ADC resolution
-<<<<<<< HEAD
+
     #define ADC_MID_VALUE 2048
-=======
+
     #define ADC_THRESHOLD_VALUE 3000
->>>>>>> temp
+
 
     //the next defines configure the sampling rate of the timer and adc
     /*
      * CPU_TIMER_MHZ dictates the clock of the system. Usual is 90 MHz
      * TIMER_PERIOD_US indicates the time between interruptions
-     * MAX_ADC_SAMPLES dictates the number of the buffer samples to be stored
+     * SYMBOL_SIZE dictates the number of the buffer samples to be stored
      *
      */
     #define CPU_TIMER_MHZ 90 //clock of timer
     #define TIMER_PERIOD_US 1 //sampling rate period
-    #define MAX_ADC_SAMPLES 10 //defines the maximum samples per symbol
-
-<<<<<<< HEAD
-    enum CtrlFlag {YES, NO}; //flag to indicate adc buffer complete
-=======
-    //enum CtrlFlag{YES,NO};
->>>>>>> temp
+    #define SYMBOL_SIZE 10 //defines the maximum samples per symbol
+    #define ADC_BUFFER_SIZE SYMBOL_SIZE //defines the size of the adc buffer
 #endif
 
 
@@ -184,39 +180,20 @@ Here's a high-level overview of the steps involved:
 #ifdef ADC_CODE
     void adcInit();
     __interrupt void cpu_timer0_isr();
-<<<<<<< HEAD
+
 #endif
 
-#ifdef MANCHESTER_PROCESS
-    void process_manchester();
-=======
-    void detect_manchester_symbol();
-    void format_ascii_char();
->>>>>>> temp
-#endif
 
 //
 // Globals
 //
 #ifdef ADC_CODE
-<<<<<<< HEAD
-    Uint16 adc_buffer[MAX_ADC_SAMPLES] = {0};
-    volatile Uint8 buffer_head = 0;
-    enum CtrlFlag buffer_flag = NO;
+   // Uint16 adc_buffer[ADC_BUFFER_SIZE] = {0};
+  //  volatile bool buffer_full = false;
+    volatile Uint8 adc_interrupt_flag = 0;
+    volatile Uint16 adc_sample = 0;
 #endif
 
-#ifdef MANCHESTER_PROCESS
-    unsigned char process_manchester();
-=======
-    volatile Uint16 adc_buffer[MAX_ADC_SAMPLES] = {0};
-    volatile Uint16 buffer_head = 0;
-    //volatile enum CtrlFlag buffer_full = NO;
-    volatile bool buffer_full = false;
-    volatile Uint8 decoded_byte = 0;
-    volatile Uint8 bits_received = 0;
-    Uint16 sum = 0;;
->>>>>>> temp
-#endif
 //
 // Main
 //
@@ -301,6 +278,9 @@ void main(void)
     sciInit();  // Initalize SCI
 #endif
 
+#ifdef MANCHESTER_PROCESS
+    manchester_set_parameters(ADC_BUFFER_SIZE,SYMBOL_SIZE,ADC_THRESHOLD_VALUE);
+#endif
     //init cput timers and adc configs
 #ifdef ADC_CODE
     adcInit();
@@ -309,8 +289,6 @@ void main(void)
 #endif
 
     //infinite loop
-
-
     for(;;)
     {
         #ifdef CONSOLE_BAUDRATE_9600
@@ -321,40 +299,12 @@ void main(void)
             void echo_mode_loop(void);
         #endif
 
-<<<<<<< HEAD
         #ifdef MANCHESTER_PROCESS
-            if(buffer_flag == YES)
+            if(adc_interrupt_flag)
             {
-                buffer_flag = NO; //restart the buffer
-                process_manchester(); //processes the buffer manchester
+                adc_interrupt_flag = 0;
+                process_sample(adc_sample);
             }
-=======
-        #ifdef ADC_CODE
-
-            while(!buffer_full) {};
-
-            // Calculate average value of the buffer
-            for(i = 0 ; i < MAX_ADC_SAMPLES ; i++)
-            {
-                sum += adc_buffer[i];
-            }
-            avg_value = sum/MAX_ADC_SAMPLES;
-
-            // Process each sample in the buffer
-            for (i = 0; i < MAX_ADC_SAMPLES ; i++)
-            {
-                bool bit_value = adc_buffer[i] > sum;
-                process_bit(bit_value);
-
-                /*
-                if( adc_buffer[i] > sum)
-                {
-                    process_bit();
-                }
-                */
-            }
-
->>>>>>> temp
         #endif
 
     }
@@ -505,7 +455,7 @@ void echo_mode_loop()
         //Configuring the ADC
         EALLOW;
         AdcRegs.ADCCTL1.bit.ADCENABLE = 0; //disable ADC to make changes
-        AdcRegs.ADCSOC0CTL.bit.TRIGSEL = 0 //adc triggers via software only
+        AdcRegs.ADCSOC0CTL.bit.TRIGSEL = 0; //adc triggers via software only
         //AdcRegs.ADCSOC0CTL.bit.CHSEL = 1; //adc triggers via cpu timer 0
         AdcRegs.ADCSOC0CTL.bit.CHSEL = 0;  //select adc channel ADCINA0
         AdcRegs.INTSEL1N2.bit.INT1SEL = 1; //Connect ADCINT1 to EOC1
@@ -539,72 +489,26 @@ void echo_mode_loop()
     __interrupt void cpu_timer0_isr(void)
     {
 
+        //static Uint8 buffer_head = 0;
         //do something with the code
         #ifdef GPIO_TOGGLE
             //Toggles GPIO0 every interruption (used to check time between isr's)
             GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1; //toggle GPIO upon isr
         #endif
 
-<<<<<<< HEAD
         // Start ADC conversion
         AdcRegs.ADCSOCFRC1.bit.SOC0 = 1; //force SOC0 conversion
-        while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
-        adc_buffer[buffer_head] = AdcResult.ADCRESULT0; //get value from adc
-
-        if(buffer_head == MAX_ADC_SAMPLES)
-        {
-            buffer_head = 0;
-            buffer_flag = YES;
-        }
-        else
-        {
-            buffer_head++;
-        }
+        //while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
+        //adc_buffer[buffer_head] = AdcResult.ADCRESULT0; //get value from adc
+        adc_sample = AdcResult.ADCRESULT0;
+        adc_interrupt_flag = 1;
 
         AdcRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //Clear ADCINT1
         PieCtrlRegs.PIEACK.all = PIEACK_GROUP1; //acknowledge interrupt
     }
-
-
-
-
 #endif
 
-#ifdef MANCHESTER_PROCESS
-    unsigned char process_manchester()
-    {
 
-        //do something with the code
-        //toggles gpio
-        #ifdef GPIO_TOGGLE
-            //Toggles GPIO0 every interruption (used to check time between isr's)
-            GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1; //toggle GPIO upon isr
-        #endif
-
-        //processes manchester symbol
-
-    }
-=======
-
-        // Start ADC conversion
-        AdcRegs.ADCSOCFRC1.bit.SOC0 = 1;
-        //while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
-        AdcRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //Clear ADCINT1
-        sum += AdcResult.ADCRESULT0;
-        buffer_head = (buffer_head + 1) % MAX_ADC_SAMPLES;
-
-        if(buffer_head == MAX_ADC_SAMPLES)
-        {
-            buffer_head = 0;
-            buffer_full = true;
-        }
-
-        PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
-    }
-
-
->>>>>>> temp
-#endif
 
 //
 // End of File

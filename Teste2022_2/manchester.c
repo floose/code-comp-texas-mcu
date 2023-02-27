@@ -7,7 +7,6 @@
 
 
 #include "manchester.h"
-#include <stdint.h>
 
 static struct Manchester_config manch_conf; //this holds the configurations
 static unsigned char delivered_byte = 0x0F; //this holds the byte processed
@@ -58,7 +57,7 @@ unsigned char process_sample(unsigned short int sample)
   return 1;
 }
 
-unsigned char process_bit(unsigned char bit_value)
+static void process_bit(unsigned char bit_value)
 {
   static unsigned char bits_received = 0;
   static unsigned char decoded_byte = 0;
@@ -82,7 +81,6 @@ unsigned char process_bit(unsigned char bit_value)
     bits_received = 0;
     decoded_byte = 0;
   }
-
 }
 
 unsigned char get_data_byte()
