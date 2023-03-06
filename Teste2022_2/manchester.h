@@ -1,13 +1,8 @@
 #ifndef _MANCHESTER_CONFIG
 #define _MANCHESTER_CONFIG
 
-struct Manchester_config
-{
-    unsigned char buffer_size; //configures buffer size
-    unsigned char symbol_syze; //configures adc manchester symbol size
-    unsigned short int threshold; //configures threshold value
-    unsigned int conf_flag;      //checks if structure was already configured.
-};
+#define FAILURE 0
+#define SUCCESS 1
 
 
 //configures the manchester structure manch_conf
@@ -19,7 +14,7 @@ unsigned char process_sample(unsigned short int sample);
 //processes the bit, used only inside the scope
 static void process_bit(unsigned char bit_value);
 //gets the delivered bit
-unsigned char get_data_byte();
+char get_data_byte();
 
 
 #endif

@@ -8,53 +8,66 @@
 
 #include "manchester.h"
 
-static struct Manchester_config manch_conf; //this holds the configurations
-static unsigned char delivered_byte = 0x0F; //this holds the byte processed
+
+static unsigned char buffer_size = 0; //configures buffer size
+static unsigned char symbol_syze = 0; //configures adc manchester symbol size
+static unsigned short int threshold = 0; //configures threshold value
+static unsigned int conf_flag = 0;      //checks if structure was already configured.
+static char delivered_byte = 0x00; //this holds the byte processed
 
 void manchester_set_parameters(unsigned char b_size,
                                unsigned char s_size,
                                unsigned short int th)
 {
     //configures the parameters for the manchester algorithm
-    manch_conf.buffer_size = b_size;
-    manch_conf.symbol_syze = s_size;
-    manch_conf.threshold = th;
-    manch_conf.conf_flag = 1; //raises the flag of parameters configured
+    buffer_size = b_size;
+    symbol_syze = s_size;
+    threshold = th;
+    conf_flag = SUCCESS; //raises the flag of parameters configured
 }
 
+//
+//processes the sample of the adc. When it reaches a byte, returns 1.
+// While is still processing, returns a 0
+//
 unsigned char process_sample(unsigned short int sample)
 {
 
-  if(manch_conf.conf_flag == 0)
+  unsigned char flag = FAILURE;
+  //check if manchester is configured
+  if(conf_flag == 0)
   {
-      return 0; //returns 0 if manchester is not configured
+      flag = FAILURE;
+      return flag; //returns 0 if manchester is not configured
   }
 
+  //if it passes the confif check up, starts algorithm and static variables
   static unsigned short int last_sample = 0;
   static unsigned char loopcount = 0;
   static unsigned char bit_value = 0;
   loopcount++; //loop counter increment
 
   // Check for a transition from high to low or low to high
-  if ((sample > manch_conf.threshold && last_sample < manch_conf.threshold))
+  if ((sample > threshold && last_sample < threshold))
   {
     //printf("Here I found one transition from low to high.\n");
     bit_value = 0;
   }
-  else if((sample < manch_conf.threshold && last_sample > manch_conf.threshold))
+  else if((sample < threshold && last_sample > threshold))
   {
     //printf("Here I found one transition from high to low.\n");
     bit_value = 1;
   }
 
-  if(loopcount % manch_conf.symbol_syze == 0)//checks if reached end of symbol
+  if(loopcount % symbol_syze == 0)//checks if reached end of symbol
     {
       //printf(".............................Symbol ended. Processed bit is %d\n", bit_value);
       process_bit(bit_value);
+      flag = SUCCESS; //if reaches symbol size, returns true
     }
   last_sample = sample; //holds past samples
 
-  return 1;
+  return flag;
 }
 
 static void process_bit(unsigned char bit_value)
@@ -83,8 +96,9 @@ static void process_bit(unsigned char bit_value)
   }
 }
 
-unsigned char get_data_byte()
+char get_data_byte()
 {
-    return delivered_byte;
+    char byte = delivered_byte;
+    return byte;
 }
 

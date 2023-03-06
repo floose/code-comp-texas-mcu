@@ -122,7 +122,7 @@ Here's a high-level overview of the steps involved:
 //Use teraterm to enable communication
 //this baud rates indicates the rate between writing and receiving info from the PC
 //via console
-//#define CONSOLE_BAUDRATE_9600
+#define CONSOLE_APP
 //#define CONSOLE_BAUDRATE_115200
 
 //##### Define ECHO MODE
@@ -138,7 +138,7 @@ Here's a high-level overview of the steps involved:
 
 //#### DEFINE MANCHESTER PROCESSING
 //defines to enable the function of processing manchester code
-//#define MANCHESTER_PROCESS
+#define MANCHESTER_PROCESS
 
 //#### DEFINE ADC CODE AND TIMER
 #ifdef ADC_CODE
@@ -146,26 +146,26 @@ Here's a high-level overview of the steps involved:
 
     #define ADC_MID_VALUE 2048
 
-    #define ADC_THRESHOLD_VALUE 3000
+    #define ADC_THRESHOLD_VALUE 2048
 
 
     //the next defines configure the sampling rate of the timer and adc
     /*
-     * CPU_TIMER_MHZ dictates the clock of the system. Usual is 90 MHz
+     * CPU_TIMER_MHZ dictates the clock of the system.Usual is 90 MHz
      * TIMER_PERIOD_US indicates the time between interruptions
      * SYMBOL_SIZE dictates the number of the buffer samples to be stored
      *
      */
     #define CPU_TIMER_MHZ 90 //clock of timer
-    #define TIMER_PERIOD_US 1 //sampling rate period
-    #define SYMBOL_SIZE 10 //defines the maximum samples per symbol
+    #define TIMER_PERIOD_US .5 //sampling rate period
+    #define SYMBOL_SIZE 4 //defines the maximum samples per symbol
     #define ADC_BUFFER_SIZE SYMBOL_SIZE //defines the size of the adc buffer
 #endif
 
 
 // Function Prototypes
 //
-#ifdef CONSOLE_BAUDRATE_9600
+#ifdef CONSOLE_APP
     void sciInit();
     void scia_fifo_init();
     void scia_xmit(int a);
@@ -180,7 +180,6 @@ Here's a high-level overview of the steps involved:
 #ifdef ADC_CODE
     void adcInit();
     __interrupt void cpu_timer0_isr();
-
 #endif
 
 
@@ -192,6 +191,10 @@ Here's a high-level overview of the steps involved:
   //  volatile bool buffer_full = false;
     volatile Uint8 adc_interrupt_flag = 0;
     volatile Uint16 adc_sample = 0;
+#endif
+
+#ifdef
+    MANCHESTER_PROCESS
 #endif
 
 //
@@ -273,9 +276,10 @@ void main(void)
 
     EnableInterrupts(); //enables interrupts
 
-#ifdef CONSOLE_BAUDRATE_9600
+#ifdef CONSOLE_APP
     scia_fifo_init();      // Initialize the SCI FIFO
     sciInit();  // Initalize SCI
+    write_console_init_msg();
 #endif
 
 #ifdef MANCHESTER_PROCESS
@@ -288,22 +292,41 @@ void main(void)
     CpuTimer0Regs.TCR.bit.TSS = 0;
 #endif
 
+//unsigned char loopcount = 0; //formating the message
+//unsigned char message[56] = {0}; //char display message
+    char *msg;
     //infinite loop
     for(;;)
     {
-        #ifdef CONSOLE_BAUDRATE_9600
-        //insert here loop processes for the console msg handler
-        #endif
 
         #ifdef CONSOLE_ECHO_MODE //enables ECHO MODE
             void echo_mode_loop(void);
         #endif
 
         #ifdef MANCHESTER_PROCESS
+            //once the flag is raised, processes the sample
             if(adc_interrupt_flag)
             {
                 adc_interrupt_flag = 0;
                 process_sample(adc_sample);
+                scia_xmit(0x08); //thats backspace
+
+                //processes the sample. Returns 1 when byte is decoded
+
+                if(process_sample(adc_sample))
+                {
+                    //////message[loopcount] = get_data_byte();
+                    //loopcount++;
+                    if(get_data_byte() != 0x00)
+                    {
+
+                       *msg = get_data_byte();
+                       scia_msg(msg);
+                       msg = "\r\n";
+                       scia_msg(msg);
+                    }
+
+                }
             }
         #endif
 
@@ -314,7 +337,7 @@ void main(void)
 // scia_echoback_init - Test 1,SCIA  DLB, 8-bit word, baud rate 0x0103,
 // default, 1 STOP bit, no parity
 //
-#ifdef CONSOLE_BAUDRATE_9600
+#ifdef CONSOLE_APP
 void sciInit()
 {
     //
@@ -331,17 +354,20 @@ void sciInit()
     // enable TX, RX, internal SCICLK, Disable RX ERR, SLEEP, TXWAKE
     //
     SciaRegs.SCICTL1.all =0x0003;
-    SciaRegs.SCICTL2.bit.TXINTENA = 0;
-    SciaRegs.SCICTL2.bit.RXBKINTENA = 0;
+    SciaRegs.SCICTL2.bit.TXINTENA = 1;
+    SciaRegs.SCICTL2.bit.RXBKINTENA = 1;
 
-    //
-    // 9600 baud @LSPCLK = 22.5MHz (90 MHz SYSCLK)
-    //
-    #ifdef CONSOLE_BAUDRATE_9600
-        SciaRegs.SCIHBAUD    =0x0001;
-        SciaRegs.SCILBAUD    =0x0024;
+    #ifdef CONSOLE_APP
+        //
+        // 115200 baud @LSPCLK = 22.5MHz (90 MHz SYSCLK).
+        //
+        SciaRegs.SCIHBAUD    =0x0000;
+
+        SciaRegs.SCILBAUD    =0x0017;
+
         SciaRegs.SCICTL1.all =0x0023;  // Relinquish SCI from Reset
     #endif
+
 
 }
 
@@ -389,12 +415,12 @@ void write_console_init_msg()
     scia_msg(msg);
 
 
-        msg = "\r\nConsole Baud Rate is 9600 bps\0";
+        msg = "\r\nConsole Baud Rate is 115200 bps\0";
         scia_msg(msg);
 
 
     #ifdef ADC_CODE
-        msg = "\r\n ADC is Enabled\0";
+        msg = "\r\n ADC is Enabled \n\r\0";
         scia_msg(msg);
     #endif
 
@@ -501,7 +527,7 @@ void echo_mode_loop()
         //while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
         //adc_buffer[buffer_head] = AdcResult.ADCRESULT0; //get value from adc
         adc_sample = AdcResult.ADCRESULT0;
-        adc_interrupt_flag = 1;
+        adc_interrupt_flag = 1; //sets flag to convert it to manchester @ main
 
         AdcRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //Clear ADCINT1
         PieCtrlRegs.PIEACK.all = PIEACK_GROUP1; //acknowledge interrupt
