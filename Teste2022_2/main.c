@@ -110,8 +110,8 @@ Here's a high-level overview of the steps involved:
 //
 #include "DSP28x_Project.h"     // Device Headerfile and Examples Include File
 //#include <math.h>
-#include <stdbool.h>
-#include "manchester.h"
+//#include <stdbool.h>
+//#include "manchester.h"
 //
 //
 //My Defines
@@ -189,13 +189,13 @@ Here's a high-level overview of the steps involved:
 #ifdef ADC_CODE
    // Uint16 adc_buffer[ADC_BUFFER_SIZE] = {0};
   //  volatile bool buffer_full = false;
-    volatile Uint8 adc_interrupt_flag = 0;
+    //volatile Uint8 adc_interrupt_flag = 0;
     volatile Uint16 adc_sample = 0;
+    char* global_msg = "\0";
+    char *aux_msg = "\0";
 #endif
 
-#ifdef
-    MANCHESTER_PROCESS
-#endif
+
 
 //
 // Main
@@ -203,7 +203,8 @@ Here's a high-level overview of the steps involved:
 void main(void)
 {
 
-
+    //clock_t start, end;
+    //double cpu_time = 0;
     //
     // Step 1. Initialize System Control:
     // PLL, WatchDog, enable Peripheral Clocks
@@ -282,9 +283,11 @@ void main(void)
     write_console_init_msg();
 #endif
 
+/*
 #ifdef MANCHESTER_PROCESS
     manchester_set_parameters(ADC_BUFFER_SIZE,SYMBOL_SIZE,ADC_THRESHOLD_VALUE);
 #endif
+*/
     //init cput timers and adc configs
 #ifdef ADC_CODE
     adcInit();
@@ -294,8 +297,9 @@ void main(void)
 
 //unsigned char loopcount = 0; //formating the message
 //unsigned char message[56] = {0}; //char display message
-    char *msg;
+
     //infinite loop
+
     for(;;)
     {
 
@@ -303,35 +307,26 @@ void main(void)
             void echo_mode_loop(void);
         #endif
 
+        //#ifdef GPIO_TOGGLE
+            //Toggles GPIO0 every interruption (used to check time between isr's)
+          //  GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1; //toggle GPIO upon isr
+        //#endif
+
         #ifdef MANCHESTER_PROCESS
-            //once the flag is raised, processes the sample
-            if(adc_interrupt_flag)
+            if(*global_msg != 0x00)
             {
-                adc_interrupt_flag = 0;
-                process_sample(adc_sample);
-                scia_xmit(0x08); //thats backspace
 
-                //processes the sample. Returns 1 when byte is decoded
-
-                if(process_sample(adc_sample))
-                {
-                    //////message[loopcount] = get_data_byte();
-                    //loopcount++;
-                    if(get_data_byte() != 0x00)
-                    {
-
-                       *msg = get_data_byte();
-                       scia_msg(msg);
-                       msg = "\r\n";
-                       scia_msg(msg);
-                    }
-
-                }
+               scia_msg(global_msg);
+               aux_msg = "\r\n";
+               scia_msg(aux_msg);
             }
-        #endif
 
+        #endif
     }
+
+
 }
+
 
 //
 // scia_echoback_init - Test 1,SCIA  DLB, 8-bit word, baud rate 0x0103,
@@ -514,23 +509,73 @@ void echo_mode_loop()
         //interruption code of timer
     __interrupt void cpu_timer0_isr(void)
     {
-
+        static unsigned short int last_sample = 0;
+        static unsigned char bit_value = 0;
+        static unsigned char loopcount = 0;
+        static char decoded_byte = 0;
+        static unsigned char bits_received = 0;
+        static char dummy = 0;
         //static Uint8 buffer_head = 0;
         //do something with the code
         #ifdef GPIO_TOGGLE
             //Toggles GPIO0 every interruption (used to check time between isr's)
-            GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1; //toggle GPIO upon isr
+            GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1;
+            GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1;
         #endif
 
         // Start ADC conversion
         AdcRegs.ADCSOCFRC1.bit.SOC0 = 1; //force SOC0 conversion
         //while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
         //adc_buffer[buffer_head] = AdcResult.ADCRESULT0; //get value from adc
-        adc_sample = AdcResult.ADCRESULT0;
-        adc_interrupt_flag = 1; //sets flag to convert it to manchester @ main
+        adc_sample = AdcResult.ADCRESULT0; //gets the result
+
+
+          if(adc_sample < 2048)
+          {
+              dummy++;
+          }
+
+
+        if(adc_sample > ADC_THRESHOLD_VALUE && last_sample < ADC_THRESHOLD_VALUE)
+        {
+            bit_value = 0;
+        }
+        else if (adc_sample < ADC_THRESHOLD_VALUE && last_sample > ADC_THRESHOLD_VALUE)
+        {
+            bit_value = 1;
+        }
+
+        if(loopcount % SYMBOL_SIZE == 0)
+        {
+            if(bit_value == 1)
+            {
+                decoded_byte = decoded_byte << 1; // left shift
+                decoded_byte = decoded_byte | 0x01;
+            }
+            else if(bit_value == 0)
+            {
+                decoded_byte = (decoded_byte << 1); // Append a 0 to the byte
+
+            }
+            bits_received++;
+            if(bits_received == 8)
+            {
+                global_msg = &decoded_byte;
+                bits_received = 0;
+                decoded_byte = 0;
+            }
+            last_sample = adc_sample;
+        }
+
+    #ifdef GPIO_TOGGLE
+         //Toggles GPIO0 every interruption (used to check time between isr's)
+         GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1;
+     #endif
+        //adc_interrupt_flag = 1; //sets flag to convert it to manchester @ main
 
         AdcRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //Clear ADCINT1
         PieCtrlRegs.PIEACK.all = PIEACK_GROUP1; //acknowledge interrupt
+
     }
 #endif
 

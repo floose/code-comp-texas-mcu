@@ -99,6 +99,7 @@ static void process_bit(unsigned char bit_value)
 char get_data_byte()
 {
     char byte = delivered_byte;
+    delivered_byte = 0x00; //resets byte for monitoring purposes;
     return byte;
 }
 
