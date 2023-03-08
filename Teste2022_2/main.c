@@ -148,6 +148,7 @@ Here's a high-level overview of the steps involved:
 
     #define ADC_THRESHOLD_VALUE 2048
 
+    #define ADC_FLOOR_VALUE 800
 
     //the next defines configure the sampling rate of the timer and adc
     /*
@@ -160,6 +161,7 @@ Here's a high-level overview of the steps involved:
     #define TIMER_PERIOD_US .5 //sampling rate period
     #define SYMBOL_SIZE 4 //defines the maximum samples per symbol
     #define ADC_BUFFER_SIZE SYMBOL_SIZE //defines the size of the adc buffer
+    #define BYTE_WINDOW SYMBOL_SYZE*8
 #endif
 
 
@@ -193,6 +195,7 @@ Here's a high-level overview of the steps involved:
     volatile Uint16 adc_sample = 0;
     char* global_msg = "\0";
     char *aux_msg = "\0";
+    Uint16 data_adc[ADC_BUFFER_SIZE] = {0};
 #endif
 
 
@@ -510,18 +513,25 @@ void echo_mode_loop()
     __interrupt void cpu_timer0_isr(void)
     {
         static unsigned short int last_sample = 0;
-        static unsigned char bit_value = 0;
-        static unsigned char loopcount = 0;
         static char decoded_byte = 0;
         static unsigned char bits_received = 0;
-        static char dummy = 0;
-        //static Uint8 buffer_head = 0;
-        //do something with the code
+        static unsigned char dummy_counter = 0;
+        static unsigned char loopcount = 0;
+
+        //trick to avoid algorithm triggering after init. Needs change.
+        if(dummy_counter < 2)
+        {
+            dummy_counter++;
+        }
+
+        /*
+        //toggle pin to verify timing
         #ifdef GPIO_TOGGLE
             //Toggles GPIO0 every interruption (used to check time between isr's)
             GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1;
-            GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1;
+           // GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1;
         #endif
+        */
 
         // Start ADC conversion
         AdcRegs.ADCSOCFRC1.bit.SOC0 = 1; //force SOC0 conversion
@@ -529,48 +539,56 @@ void echo_mode_loop()
         //adc_buffer[buffer_head] = AdcResult.ADCRESULT0; //get value from adc
         adc_sample = AdcResult.ADCRESULT0; //gets the result
 
-
-          if(adc_sample < 2048)
-          {
-              dummy++;
-          }
-
-
-        if(adc_sample > ADC_THRESHOLD_VALUE && last_sample < ADC_THRESHOLD_VALUE)
+        //this is a trick to check the value of the buffer size while processing the algorithm
+        if(loopcount == ADC_BUFFER_SIZE)
         {
-            bit_value = 0;
+            loopcount = 0;
         }
-        else if (adc_sample < ADC_THRESHOLD_VALUE && last_sample > ADC_THRESHOLD_VALUE)
-        {
-            bit_value = 1;
-        }
+        //end of trick
 
-        if(loopcount % SYMBOL_SIZE == 0)
+        if(adc_sample > ADC_THRESHOLD_VALUE && last_sample < ADC_THRESHOLD_VALUE && dummy_counter == 2)
         {
-            if(bit_value == 1)
-            {
-                decoded_byte = decoded_byte << 1; // left shift
-                decoded_byte = decoded_byte | 0x01;
-            }
-            else if(bit_value == 0)
-            {
-                decoded_byte = (decoded_byte << 1); // Append a 0 to the byte
-
-            }
+            decoded_byte = (decoded_byte << 1); // Append a 0 to the byte
             bits_received++;
-            if(bits_received == 8)
-            {
-                global_msg = &decoded_byte;
-                bits_received = 0;
-                decoded_byte = 0;
-            }
-            last_sample = adc_sample;
+            data_adc[loopcount] = adc_sample;
+            loopcount++;
+            //toggle pin to verify timing
+            #ifdef GPIO_TOGGLE
+                //Toggles GPIO0 every interruption (used to check time between isr's)
+                GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1;
+               // GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1;
+            #endif
+        }
+        else if (adc_sample < ADC_THRESHOLD_VALUE && last_sample > ADC_THRESHOLD_VALUE & dummy_counter == 2)
+        {
+            decoded_byte = decoded_byte << 1; // left shift
+            decoded_byte = decoded_byte | 0x01;
+            bits_received++;
+            data_adc[loopcount] = adc_sample;
+            loopcount++;
+            //toggle pin to verify timing
+            #ifdef GPIO_TOGGLE
+                //Toggles GPIO0 every interruption (used to check time between isr's)
+                GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1;
+               // GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1;
+            #endif
         }
 
-    #ifdef GPIO_TOGGLE
-         //Toggles GPIO0 every interruption (used to check time between isr's)
-         GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1;
-     #endif
+
+        if(bits_received == 8)
+        {
+            //*global_msg = decoded_byte;
+            bits_received = 0;
+            decoded_byte = 0;
+        }
+
+        last_sample = adc_sample;
+        /*
+        #ifdef GPIO_TOGGLE
+             //Toggles GPIO0 every interruption (used to check time between isr's)
+             GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1;
+        #endif
+        */
         //adc_interrupt_flag = 1; //sets flag to convert it to manchester @ main
 
         AdcRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //Clear ADCINT1
