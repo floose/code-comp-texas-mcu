@@ -109,6 +109,9 @@ Here's a high-level overview of the steps involved:
 // Included Files
 //
 #include "DSP28x_Project.h"     // Device Headerfile and Examples Include File
+#include "F2806x_Examples.h"
+#include "F2806x_Device.h"
+
 //#include <math.h>
 //#include <stdbool.h>
 //#include "manchester.h"
@@ -159,9 +162,9 @@ Here's a high-level overview of the steps involved:
      */
     #define CPU_TIMER_MHZ 90 //clock of timer
     #define TIMER_PERIOD_US .5 //sampling rate period
-    #define SYMBOL_SIZE 4 //defines the maximum samples per symbol
+    #define SYMBOL_SIZE 2 //defines the maximum samples per symbol
     #define ADC_BUFFER_SIZE SYMBOL_SIZE //defines the size of the adc buffer
-    #define BYTE_WINDOW SYMBOL_SYZE*8
+    #define BYTE_WINDOW 16
 #endif
 
 
@@ -195,7 +198,7 @@ Here's a high-level overview of the steps involved:
     volatile Uint16 adc_sample = 0;
     char* global_msg = "\0";
     char *aux_msg = "\0";
-    Uint16 data_adc[ADC_BUFFER_SIZE] = {0};
+    Uint16 data_adc[BYTE_WINDOW] = {0};
 #endif
 
 
@@ -264,7 +267,6 @@ void main(void)
     //
 
     //initialize LED to indicate Timer interrupt
-
 
     //initialize GPIO to toggle them at the timer interrupt
     #ifdef GPIO_TOGGLE
@@ -518,20 +520,20 @@ void echo_mode_loop()
         static unsigned char dummy_counter = 0;
         static unsigned char loopcount = 0;
 
-        //trick to avoid algorithm triggering after init. Needs change.
-        if(dummy_counter < 2)
-        {
-            dummy_counter++;
-        }
-
-        /*
         //toggle pin to verify timing
+
         #ifdef GPIO_TOGGLE
             //Toggles GPIO0 every interruption (used to check time between isr's)
             GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1;
            // GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1;
         #endif
-        */
+
+
+        //trick to avoid algorithm triggering after init. Needs change.
+        if(dummy_counter < 2)
+        {
+            dummy_counter++;
+        }
 
         // Start ADC conversion
         AdcRegs.ADCSOCFRC1.bit.SOC0 = 1; //force SOC0 conversion
@@ -540,7 +542,7 @@ void echo_mode_loop()
         adc_sample = AdcResult.ADCRESULT0; //gets the result
 
         //this is a trick to check the value of the buffer size while processing the algorithm
-        if(loopcount == ADC_BUFFER_SIZE)
+        if(loopcount == BYTE_WINDOW)
         {
             loopcount = 0;
         }
@@ -553,11 +555,7 @@ void echo_mode_loop()
             data_adc[loopcount] = adc_sample;
             loopcount++;
             //toggle pin to verify timing
-            #ifdef GPIO_TOGGLE
-                //Toggles GPIO0 every interruption (used to check time between isr's)
-                GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1;
-               // GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1;
-            #endif
+
         }
         else if (adc_sample < ADC_THRESHOLD_VALUE && last_sample > ADC_THRESHOLD_VALUE & dummy_counter == 2)
         {
@@ -566,14 +564,7 @@ void echo_mode_loop()
             bits_received++;
             data_adc[loopcount] = adc_sample;
             loopcount++;
-            //toggle pin to verify timing
-            #ifdef GPIO_TOGGLE
-                //Toggles GPIO0 every interruption (used to check time between isr's)
-                GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1;
-               // GpioDataRegs.GPATOGGLE.bit.GPIO1 = 1;
-            #endif
         }
-
 
         if(bits_received == 8)
         {
